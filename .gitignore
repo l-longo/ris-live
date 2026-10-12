@@ -8,3 +8,4 @@ data/macro_fred_mock.csv
 docs/data/dashboard_mock.json
 __pycache__/
 .DS_Store
+data/items_live.csv

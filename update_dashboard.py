@@ -67,6 +67,10 @@ GEO_FILE = os.path.join(LABEL_DIR, 'geo_submissions.csv')
 SIG_FILE = os.path.join(LABEL_DIR, 'signal_llama70b.csv')
 FACTIVA_FILE = os.environ.get('RIS_FACTIVA_FILE', os.path.join(REDDIT_DIR, 'US_inflation.csv'))
 FACTIVA_SIG_FILE = os.path.join(LABEL_DIR, 'factiva_titles_signal_llama70b.csv')
+ITEMS_FILE = os.path.join(REPO_DIR, 'data', 'items_live.csv')                # texts for label_finetuned.py (never committed)
+FT_DIR = os.path.join(REPO_DIR, 'labels', 'finetuned')
+FT_MODELS = ['gemma2_2b_xqdora', 'llama3_2_1b_xqdora', 'llama3_2_3b_xqdora', 'qwen2_5_0_5b_xqdora', 'qwen2_5_1_5b_xqdora', 'inflabert']
+FT_SUFFIX = {'Economics': 'economics', 'economy': 'economy', 'wallstreetbets': 'wsb'}
 MACRO_CACHE = os.path.join(REPO_DIR, 'data', 'macro_fred_mock.csv' if MOCK else 'macro_fred.csv')
 DAILY_LIVE_FILE = os.path.join(REPO_DIR, 'data', 'daily_signals_llama70b_live_mock.csv' if MOCK else 'daily_signals_llama70b_live.csv')
 OUT_FILE = os.path.join(REPO_DIR, 'docs', 'data', 'dashboard_mock.json' if MOCK else 'dashboard.json')
@@ -322,6 +326,16 @@ if missing_days and os.path.exists(FACTIVA_FILE):
 still_missing = [d for d in missing_days if d not in set(factiva_days)]
 daily_live.index.name = 'date'
 daily_live.to_csv(DAILY_LIVE_FILE)
+
+# texts for the fine-tuned classifiers (label_finetuned.py): the screened Reddit
+# items plus the Factiva titles of the outage days
+items_out = items[['id', 'kind', 'id_sub', 'subreddit', 'created', 'text']].copy()
+if factiva_days:
+    fac_out = fac[['an', 'date', 'title']].rename(columns={'an': 'id', 'date': 'created', 'title': 'text'})
+    fac_out['kind'], fac_out['id_sub'], fac_out['subreddit'] = 'factiva', fac_out['id'], ''
+    items_out = pd.concat([items_out, fac_out[items_out.columns]], ignore_index=True)
+if not MOCK:
+    items_out.to_csv(ITEMS_FILE, index=False)
 if missing_days:
     print(f'Reddit outage days: {len(missing_days)}; filled with Factiva titles: {len(factiva_days)}; still missing: {len(still_missing)}')
 
@@ -361,6 +375,66 @@ jae = pd.read_excel(os.path.join(REPLICATION_DIR, 'data', 'df_jae_reddit.xlsx'),
 chk = [np.nanmax(np.abs(variants.loc[:JAE_END, c].values - jae.loc[:JAE_END, c].reindex(variants.loc[:JAE_END].index).values))
        for c in variants.columns if c in jae.columns]
 print(f'replication check vs df_jae_reddit.xlsx: max abs diff {max(chk):.2e} over {len(chk)} series')
+
+# ----------------------------------------------------------------------------
+# 6b. Fine-tuned classifiers (labels from label_finetuned.py), same aggregation
+#     as build_daily_signals.build_finetuned: thread = sign of the mean trend of
+#     its items, dated at the submission, summed by day; outage days from the
+#     Factiva titles labelled by the same model. A model enters only once every
+#     live item has its label.
+# ----------------------------------------------------------------------------
+ft_models, ft_daily_live = [], pd.DataFrame(index=live_days)
+for mname in FT_MODELS:
+    fpath = os.path.join(FT_DIR, f'{mname}.csv')
+    if MOCK or not os.path.exists(fpath):
+        continue
+    fl = pd.read_csv(fpath, dtype={'id': str})
+    it = items_out.merge(fl[['id', 'kind', 'trend']], on=['id', 'kind'], how='left')
+    if it['trend'].isna().any():
+        print(f'fine-tuned {mname}: {int(it["trend"].isna().sum())} items not labelled yet - left out')
+        continue
+    rd_ = it[it['kind'].isin(['submission', 'comment'])]
+    rd_ = rd_[rd_['id_sub'].isin(set(rd_.loc[rd_['kind'] == 'submission', 'id_sub']))]
+    th = rd_.groupby('id_sub').agg(date=('created', 'min'), subreddit=('subreddit', 'first'), value=('trend', 'mean'))
+    th['date'] = pd.to_datetime(th['date']).dt.floor('D')
+    th['disc'] = np.where(th['value'] > 0, 1, np.where(th['value'] < 0, -1, 0))
+    fday = None
+    if factiva_days:
+        fv = it[it['kind'] == 'factiva']
+        fday = fv['trend'].groupby(pd.to_datetime(fv['created']).dt.floor('D')).sum().reindex(factiva_days, fill_value=0).astype(float)
+    for s_, suf in FT_SUFFIX.items():
+        col = f'{mname}_trend_{suf}'
+        ft_daily_live[col] = th[th['subreddit'] == s_].groupby('date')['disc'].sum().reindex(live_days, fill_value=0).astype(float)
+        ft_daily_live.loc[missing_days, col] = np.nan
+        if fday is not None:
+            ft_daily_live.loc[factiva_days, col] = fday.values
+    ft_models.append(mname)
+
+ft_variants = None
+if ft_models:
+    hist_ft = pd.read_csv(os.path.join(REPLICATION_DIR, 'data', 'daily_signals_finetuned.csv'), index_col=0, parse_dates=True)
+    cols_ft = [f'{m}_trend_{suf}' for m in ft_models for suf in FT_SUFFIX.values()]
+    hist_ft = hist_ft.loc[hist_ft.index <= JAE_END, cols_ft]
+    dft = pd.concat([hist_ft, ft_daily_live[cols_ft]], axis=0)
+    dft = dft[~dft.index.duplicated(keep='first')].asfreq('D')
+    dft_fill = dft.copy()
+    for c in dft_fill.columns:
+        first = dft_fill[c].first_valid_index()
+        dft_fill.loc[first:JAE_END, c] = dft_fill.loc[first:JAE_END, c].fillna(0)
+    fv_, fv_live = {}, {}
+    for w in MA_SEQ:
+        m1 = dft.rolling(w).mean().resample('ME').mean()
+        m2 = dft_fill.rolling(w).mean().resample('ME').mean()
+        for c in cols_ft:
+            fv_[f'{c}_ma{w}'] = m1[c]
+            fv_live[f'{c}_ma{w}'] = m2[c]
+    ft_variants = pd.DataFrame(fv_)
+    fv_live = pd.DataFrame(fv_live)
+    ft_variants.loc[ft_variants.index > JAE_END] = fv_live.loc[fv_live.index > JAE_END]
+    ft_variants = ft_variants[ft_variants.index <= last_day + pd.offsets.MonthEnd(0)]
+    chk = [np.nanmax(np.abs(ft_variants.loc[:JAE_END, c].values - jae.loc[:JAE_END, c].reindex(ft_variants.loc[:JAE_END].index).values))
+           for c in ft_variants.columns if c in jae.columns]
+    print(f'fine-tuned: {len(ft_models)} models; replication check vs df_jae_reddit.xlsx: max abs diff {max(chk):.2e} over {len(chk)} series')
 
 # ----------------------------------------------------------------------------
 # 7. CPI and core PCE (FRED, latest vintage), 12-month log change as in the paper
@@ -416,6 +490,13 @@ n_avail = Vz.notna().sum(axis=1)
 ris_med = Vz.median(axis=1).where(n_avail >= 3)
 ris_p10 = Vz.quantile(0.10, axis=1).where(n_avail >= 3)
 ris_p90 = Vz.quantile(0.90, axis=1).where(n_avail >= 3)
+ris_ft = None
+if ft_variants is not None:
+    F = ft_variants.reindex(months)
+    Fz = (F - ft_variants.loc[ZSCORE_START:ZSCORE_END].mean()) / ft_variants.loc[ZSCORE_START:ZSCORE_END].std()
+    nf = Fz.notna().sum(axis=1)
+    ris_ft = {'median': Fz.median(axis=1).where(nf >= 3), 'p10': Fz.quantile(0.10, axis=1).where(nf >= 3),
+              'p90': Fz.quantile(0.90, axis=1).where(nf >= 3), 'n_variants': nf}
 M = macro.reindex(months)
 Mz = (M - macro.loc[ZSCORE_START:ZSCORE_END].mean()) / macro.loc[ZSCORE_START:ZSCORE_END].std()
 
@@ -434,6 +515,8 @@ out = {
     'ris': {'median': rd(ris_med), 'p10': rd(ris_p10), 'p90': rd(ris_p90), 'n_variants': [int(x) for x in n_avail]},
     'cpi': {'z': rd(Mz['CPIAUCSL']), 'pct': rd(M['CPIAUCSL'])},
     'pce': {'z': rd(Mz['PCEPILFE']), 'pct': rd(M['PCEPILFE'])},
+    'ris_ft': None if ris_ft is None else {'median': rd(ris_ft['median']), 'p10': rd(ris_ft['p10']), 'p90': rd(ris_ft['p90']),
+                                           'n_variants': [int(x) for x in ris_ft['n_variants']], 'models': ft_models},
 }
 with open(OUT_FILE, 'w') as f:
     json.dump(out, f, separators=(',', ':'))

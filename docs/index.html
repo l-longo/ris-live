@@ -9,19 +9,19 @@
 :root{
   color-scheme: light;
   --plane:#fcfcfb; --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781; --grid:#e1e0d9; --axis:#c3c2b7;
-  --ris:#2a78d6; --ris-band:rgba(42,120,214,0.16); --live:rgba(11,11,11,0.035); --border:rgba(11,11,11,0.10); --tip:#ffffff;
+  --ris:#2a78d6; --ris-band:rgba(42,120,214,0.16); --ft:#eb6834; --live:rgba(11,11,11,0.035); --border:rgba(11,11,11,0.10); --tip:#ffffff;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     color-scheme: dark;
     --plane:#1a1a19; --ink:#f0efec; --ink-2:#c3c2b7; --muted:#898781; --grid:#2c2c2a; --axis:#383835;
-    --ris:#3987e5; --ris-band:rgba(57,135,229,0.22); --live:rgba(255,255,255,0.04); --border:rgba(255,255,255,0.10); --tip:#242423;
+    --ris:#3987e5; --ris-band:rgba(57,135,229,0.22); --ft:#d95926; --live:rgba(255,255,255,0.04); --border:rgba(255,255,255,0.10); --tip:#242423;
   }
 }
 :root[data-theme="dark"]{
   color-scheme: dark;
   --plane:#1a1a19; --ink:#f0efec; --ink-2:#c3c2b7; --muted:#898781; --grid:#2c2c2a; --axis:#383835;
-  --ris:#3987e5; --ris-band:rgba(57,135,229,0.22); --live:rgba(255,255,255,0.04); --border:rgba(255,255,255,0.10); --tip:#242423;
+  --ris:#3987e5; --ris-band:rgba(57,135,229,0.22); --ft:#d95926; --live:rgba(255,255,255,0.04); --border:rgba(255,255,255,0.10); --tip:#242423;
 }
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--plane);color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -63,14 +63,14 @@ footer p{margin:0 0 6px}
   <section>
     <h2>RIS and CPI inflation</h2>
     <p class="sub">Standardised units (z-scores over 2009M1–2025M8). CPI: 12-month log change of CPIAUCSL.</p>
-    <div class="legend"><span><i class="k-band" style="background:var(--ris-band)"></i>RIS, 10–90% of variants</span><span><i class="k-line" style="background:var(--ris)"></i>RIS median</span><span><i class="k-line" style="background:var(--ink);height:3px"></i>CPI</span></div>
+    <div class="legend"><span><i class="k-band" style="background:var(--ris-band)"></i>RIS Llama-70B, 10–90% of variants</span><span><i class="k-line" style="background:var(--ris)"></i>RIS median, Llama-70B</span><span class="ft-leg hidden"><i class="k-line" style="background:var(--ft)"></i>RIS median, fine-tuned models</span><span><i class="k-line" style="background:var(--ink);height:3px"></i>CPI</span></div>
     <div class="chart" id="c-cpi"></div>
   </section>
 
   <section>
     <h2>RIS and core PCE inflation</h2>
     <p class="sub">Standardised units (z-scores over 2009M1–2025M8). Core PCE: 12-month log change of PCEPILFE.</p>
-    <div class="legend"><span><i class="k-band" style="background:var(--ris-band)"></i>RIS, 10–90% of variants</span><span><i class="k-line" style="background:var(--ris)"></i>RIS median</span><span><i class="k-line" style="background:var(--ink);height:3px"></i>Core PCE</span></div>
+    <div class="legend"><span><i class="k-band" style="background:var(--ris-band)"></i>RIS Llama-70B, 10–90% of variants</span><span><i class="k-line" style="background:var(--ris)"></i>RIS median, Llama-70B</span><span class="ft-leg hidden"><i class="k-line" style="background:var(--ft)"></i>RIS median, fine-tuned models</span><span><i class="k-line" style="background:var(--ink);height:3px"></i>Core PCE</span></div>
     <div class="chart" id="c-pce"></div>
   </section>
 
@@ -107,9 +107,9 @@ const hideTip=()=>tip.style.opacity=0;
 
 function draw(id, key, name){
   const box=document.getElementById(id); box.replaceChildren();
-  const M=D.months, n=M.length, med=D.ris.median, lo=D.ris.p10, hi=D.ris.p90, inf=D[key].z, pct=D[key].pct;
+  const M=D.months, n=M.length, med=D.ris.median, lo=D.ris.p10, hi=D.ris.p90, inf=D[key].z, pct=D[key].pct, ft=(D.ris_ft&&D.ris_ft.median)||M.map(()=>null);
   const W=box.clientWidth||900, H=Math.max(260,Math.min(380,W*0.42)), m={l:36,r:12,t:10,b:28}, iw=W-m.l-m.r, ih=H-m.t-m.b;
-  const all=[...lo,...hi,...med,...inf].filter(v=>v!=null);
+  const all=[...lo,...hi,...med,...inf,...ft].filter(v=>v!=null);
   const T=ticks(Math.min(...all),Math.max(...all)), y0=T[0], y1=T[T.length-1];
   const X=i=>m.l+i/(n-1)*iw, Y=v=>m.t+ih-(v-y0)/(y1-y0)*ih;
   const svg=S('svg',{viewBox:`0 0 ${W} ${H}`,height:H,role:'img','aria-label':`RIS and ${name}, standardised`});
@@ -126,7 +126,7 @@ function draw(id, key, name){
   segs.forEach(s=>{ const d='M'+s.map(i=>X(i)+','+Y(hi[i])).join(' L')+' L'+s.slice().reverse().map(i=>X(i)+','+Y(lo[i])).join(' L')+'Z'; svg.appendChild(S('path',{d,fill:css('--ris-band')})); });
   const line=(arr,col,w)=>{ let d='',pen=false; arr.forEach((v,i)=>{ if(v==null){pen=false;return;} d+=(pen?' L':' M')+X(i)+','+Y(v); pen=true; });
     svg.appendChild(S('path',{d,fill:'none',stroke:col,'stroke-width':w,'stroke-linejoin':'round','stroke-linecap':'round'})); };
-  line(med,css('--ris'),2); line(inf,css('--ink'),2.5);
+  line(med,css('--ris'),2); line(ft,css('--ft'),2); line(inf,css('--ink'),2.5);
   // hover
   const ch=S('line',{y1:m.t,y2:m.t+ih,stroke:css('--axis'),opacity:0}); svg.appendChild(ch);
   const d1=S('circle',{r:4,fill:css('--ris'),stroke:css('--plane'),'stroke-width':2,opacity:0}), d2=S('circle',{r:4,fill:css('--ink'),stroke:css('--plane'),'stroke-width':2,opacity:0}); svg.append(d1,d2);
@@ -135,8 +135,9 @@ function draw(id, key, name){
     [[d1,med[i]],[d2,inf[i]]].forEach(([c,v])=>{ if(v==null) c.setAttribute('opacity',0); else { c.setAttribute('cx',X(i)); c.setAttribute('cy',Y(v)); c.setAttribute('opacity',1);} });
     const gap = (D.meta.gap_months||[]).includes(M[i]) || (D.meta.factiva_months||[]).includes(M[i]);
     showTip(box, X(i)/W*box.clientWidth, Y(med[i]??inf[i]??0)/H*box.clientHeight, mlab(M[i])+(i>=li&&li>=0?' · live':'')+(gap?' · partial Reddit data':''), [
-      {n:'RIS median', v:f2(med[i]), c:css('--ris')},
-      {n:'RIS 10–90%', v: lo[i]==null?'–':f2(lo[i])+' to '+f2(hi[i]), c:css('--ris-band'), band:true},
+      {n:'RIS Llama-70B', v:f2(med[i]), c:css('--ris')},
+      ...(D.ris_ft ? [{n:'RIS fine-tuned', v:f2(ft[i]), c:css('--ft')}] : []),
+      {n:'Llama-70B 10–90%', v: lo[i]==null?'–':f2(lo[i])+' to '+f2(hi[i]), c:css('--ris-band'), band:true},
       {n:name+' (z)', v:f2(inf[i]), c:css('--ink'), thick:true},
       {n:name+', y/y', v: pct[i]==null?'not yet released':pct[i].toFixed(2)+'%', c:css('--ink'), thick:true}]); };
   const off=()=>{ ch.setAttribute('opacity',0); d1.setAttribute('opacity',0); d2.setAttribute('opacity',0); hideTip(); };
@@ -150,10 +151,12 @@ function render(){ draw('c-cpi','cpi','CPI'); draw('c-pce','pce','Core PCE'); }
 fetch(URL_,{cache:'no-store'}).then(r=>{ if(!r.ok) throw 0; return r.json(); }).then(d=>{
   D=d; const mt=d.meta;
   if(mt.mock) document.getElementById('mock').classList.remove('hidden');
+  if(d.ris_ft) document.querySelectorAll('.ft-leg').forEach(e=>e.classList.remove('hidden'));
   document.getElementById('meta').textContent = `Updated ${new Date(mt.generated_at).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})} · Reddit data through ${mt.data_through} · CPI through ${mlab(mt.macro_last.CPIAUCSL)}, core PCE through ${mlab(mt.macro_last.PCEPILFE)}`;
   const f=document.getElementById('foot');
   [`RIS: each inflation-related submission and comment is labelled UP, DOWN or NEUTRAL by ${mt.model}; a thread takes the sign of the mean of its labels and is dated at the submission; threads are summed by day and subreddit. The 24 variants are the three subreddits times the moving-average windows of the paper (1 to 360 days), averaged by month; the chart shows their median and 10–90% range.`,
    `Up to 2025M8 the series is the paper's; from ${mlab(mt.live_start)} it is built with the same prompts, filters and aggregation on newly collected posts (${mt.n_live_labelled.submission.toLocaleString('en-US')} submissions and ${mt.n_live_labelled.comment.toLocaleString('en-US')} comments so far). The latest month moves as comments arrive. Inflation data: FRED, latest vintage.`]
+   .concat(d.ris_ft ? [`Fine-tuned line: median of the same variants built from the paper's fine-tuned classifiers published on Hugging Face (${d.ris_ft.models.length} models: Qwen2.5 0.5B and 1.5B, Llama-3.2 1B and 3B, Gemma-2 2B with xQDoRA+, and InflaBERT), restricted to the same models before and after 2025M8.`] : [])
    .concat(mt.factiva_days ? [`On ${mt.factiva_days} days without Reddit data (${mt.factiva_months.map(mlab).join(', ')}) the daily signal is taken from US newspaper headlines (Factiva), labelled with the same prompt.`] : [])
    .concat(mt.gap_months && mt.gap_months.length ? [`Days with no data at all are left out of the moving averages (${mt.gap_months.map(mlab).join(', ')}).`] : [])
    .forEach(t=>f.appendChild(E('p',{},t)));

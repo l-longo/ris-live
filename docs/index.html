@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reddit Inflation Signal</title>
+<meta name="description" content="Monthly Reddit Inflation Signal (Llama-70B) against US CPI and core PCE inflation, updated live.">
+<style>
+:root{
+  color-scheme: light;
+  --plane:#fcfcfb; --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781; --grid:#e1e0d9; --axis:#c3c2b7;
+  --ris:#2a78d6; --ris-band:rgba(42,120,214,0.16); --live:rgba(11,11,11,0.035); --border:rgba(11,11,11,0.10); --tip:#ffffff;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --plane:#1a1a19; --ink:#f0efec; --ink-2:#c3c2b7; --muted:#898781; --grid:#2c2c2a; --axis:#383835;
+    --ris:#3987e5; --ris-band:rgba(57,135,229,0.22); --live:rgba(255,255,255,0.04); --border:rgba(255,255,255,0.10); --tip:#242423;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --plane:#1a1a19; --ink:#f0efec; --ink-2:#c3c2b7; --muted:#898781; --grid:#2c2c2a; --axis:#383835;
+  --ris:#3987e5; --ris-band:rgba(57,135,229,0.22); --live:rgba(255,255,255,0.04); --border:rgba(255,255,255,0.10); --tip:#242423;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--plane);color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:980px;margin:0 auto;padding:44px 16px 56px}
+h1{font-size:24px;line-height:1.25;font-weight:600;margin:0 0 10px;letter-spacing:-0.01em}
+.lede{color:var(--ink-2);margin:0 0 6px;max-width:720px}
+.cite{color:var(--ink-2);font-size:14px;margin:0;max-width:760px}
+.cite i{color:var(--ink)}
+.meta{color:var(--muted);font-size:13px;margin-top:14px}
+section{margin-top:40px}
+h2{font-size:15px;font-weight:600;margin:0 0 2px}
+.sub{color:var(--ink-2);font-size:13px;margin:0 0 8px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12px;color:var(--ink-2);margin:0 0 6px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.k-line{display:inline-block;width:16px;height:2px;border-radius:1px}
+.k-band{display:inline-block;width:12px;height:10px;border-radius:2px}
+.chart{position:relative}
+.chart svg{display:block;width:100%;overflow:visible}
+.tip{position:absolute;pointer-events:none;background:var(--tip);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,.12);white-space:nowrap;opacity:0;z-index:5}
+.tip .h{color:var(--muted);margin-bottom:4px}
+.tip .r{display:flex;justify-content:space-between;gap:14px;align-items:center}
+.tip .r span{display:inline-flex;gap:6px;align-items:center;color:var(--ink-2)}
+.tip b{font-variant-numeric:tabular-nums;font-weight:600}
+footer{margin-top:40px;color:var(--muted);font-size:13px;line-height:1.6;max-width:760px}
+footer p{margin:0 0 6px}
+.note{font-size:13px;color:var(--ink-2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-top:14px}
+.hidden{display:none}
+@media (max-width:640px){ main{padding-top:28px} h1{font-size:21px} }
+</style>
+</head>
+<body>
+<main>
+  <h1>Reddit Inflation Signal</h1>
+  <p class="lede">Monthly Reddit Inflation Signal (RIS) from Llama-3.3-70B labels of US inflation discussions on r/Economics, r/economy and r/wallstreetbets, against CPI and core PCE inflation. The shaded period extends the paper's sample in real time.</p>
+  <p class="cite">Del Monaco, A., Longo, L., Marcucci, J. and Tafani, I. <i>Reddit's Pulse on US Inflation: Forecasting with Large Language Models.</i> Journal of Applied Econometrics, forthcoming.</p>
+  <div class="meta" id="meta">Loading…</div>
+  <div class="note hidden" id="mock">Test build: the live months use a keyword stand-in, not Llama-70B.</div>
+
+  <section>
+    <h2>RIS and CPI inflation</h2>
+    <p class="sub">Standardised units (z-scores over 2009M1–2025M8). CPI: 12-month log change of CPIAUCSL.</p>
+    <div class="legend"><span><i class="k-band" style="background:var(--ris-band)"></i>RIS, 10–90% of variants</span><span><i class="k-line" style="background:var(--ris)"></i>RIS median</span><span><i class="k-line" style="background:var(--ink);height:3px"></i>CPI</span></div>
+    <div class="chart" id="c-cpi"></div>
+  </section>
+
+  <section>
+    <h2>RIS and core PCE inflation</h2>
+    <p class="sub">Standardised units (z-scores over 2009M1–2025M8). Core PCE: 12-month log change of PCEPILFE.</p>
+    <div class="legend"><span><i class="k-band" style="background:var(--ris-band)"></i>RIS, 10–90% of variants</span><span><i class="k-line" style="background:var(--ris)"></i>RIS median</span><span><i class="k-line" style="background:var(--ink);height:3px"></i>Core PCE</span></div>
+    <div class="chart" id="c-pce"></div>
+  </section>
+
+  <footer id="foot"></footer>
+</main>
+<div class="tip" id="tip"></div>
+
+<script>
+(function(){
+const q = new URLSearchParams(location.search);
+const URL_ = 'data/' + (q.get('data') || 'dashboard.json').replace(/[^a-zA-Z0-9_.-]/g,'');
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const S = (t,a={}) => { const e=document.createElementNS('http://www.w3.org/2000/svg',t); for(const k in a) e.setAttribute(k,a[k]); return e; };
+const E = (t,a={},x) => { const e=document.createElement(t); for(const k in a) e.setAttribute(k,a[k]); if(x!=null) e.textContent=x; return e; };
+const mlab = ym => MON[+ym.slice(5,7)-1]+' '+ym.slice(0,4);
+const f2 = v => v==null ? '–' : (v<0?'−':'')+Math.abs(v).toFixed(2);
+let D;
+
+function ticks(lo,hi){ const span=hi-lo, raw=span/5, mag=Math.pow(10,Math.floor(Math.log10(raw)));
+  const step=[1,2,2.5,5,10].map(m=>m*mag).find(s=>span/s<=5); const t=[];
+  for(let v=Math.floor(lo/step)*step; v<=Math.ceil(hi/step)*step+1e-9; v+=step) t.push(+v.toFixed(6)); return t; }
+
+const tip = document.getElementById('tip');
+function showTip(box,x,y,head,rows){
+  tip.replaceChildren(E('div',{class:'h'},head));
+  rows.forEach(r=>{ const row=E('div',{class:'r'}), s=E('span'), k=E('i',{class:r.band?'k-band':'k-line'}); k.style.background=r.c; if(r.thick) k.style.height='3px';
+    s.append(k, document.createTextNode(r.n)); row.append(s, E('b',{},r.v)); tip.appendChild(row); });
+  const b=box.getBoundingClientRect(); tip.style.opacity=1;
+  let L=b.left+scrollX+x+14; if(L+tip.offsetWidth>scrollX+document.documentElement.clientWidth-8) L=b.left+scrollX+x-tip.offsetWidth-14;
+  tip.style.left=L+'px'; tip.style.top=(b.top+scrollY+Math.max(0,y-tip.offsetHeight/2))+'px';
+}
+const hideTip=()=>tip.style.opacity=0;
+
+function draw(id, key, name){
+  const box=document.getElementById(id); box.replaceChildren();
+  const M=D.months, n=M.length, med=D.ris.median, lo=D.ris.p10, hi=D.ris.p90, inf=D[key].z, pct=D[key].pct;
+  const W=box.clientWidth||900, H=Math.max(260,Math.min(380,W*0.42)), m={l:36,r:12,t:10,b:28}, iw=W-m.l-m.r, ih=H-m.t-m.b;
+  const all=[...lo,...hi,...med,...inf].filter(v=>v!=null);
+  const T=ticks(Math.min(...all),Math.max(...all)), y0=T[0], y1=T[T.length-1];
+  const X=i=>m.l+i/(n-1)*iw, Y=v=>m.t+ih-(v-y0)/(y1-y0)*ih;
+  const svg=S('svg',{viewBox:`0 0 ${W} ${H}`,height:H,role:'img','aria-label':`RIS and ${name}, standardised`});
+  // live extension
+  const li=M.indexOf(D.meta.live_start);
+  if(li>=0){ const xa=X(li)-iw/(n-1)/2; svg.appendChild(S('rect',{x:xa,y:m.t,width:W-m.r-xa,height:ih,fill:css('--live')}));
+    const t=S('text',{x:W-m.r-6,y:m.t+14,'text-anchor':'end','font-size':11,fill:css('--muted')}); t.textContent='Live'; svg.appendChild(t); }
+  T.forEach(v=>{ svg.appendChild(S('line',{x1:m.l,x2:W-m.r,y1:Y(v),y2:Y(v),stroke:v===0?css('--axis'):css('--grid'),'stroke-width':1}));
+    const t=S('text',{x:m.l-8,y:Y(v)+4,'text-anchor':'end','font-size':11,fill:css('--muted')}); t.textContent=(v<0?'−':'')+Math.abs(v); svg.appendChild(t); });
+  const step = W<520 ? 4 : 2;
+  M.forEach((ym,i)=>{ const y=+ym.slice(0,4); if(ym.slice(5)==='01' && y%step===0){ const t=S('text',{x:X(i),y:H-8,'text-anchor':'middle','font-size':11,fill:css('--muted')}); t.textContent=y; svg.appendChild(t);} });
+  // band
+  let seg=[]; const segs=[]; for(let i=0;i<n;i++){ if(lo[i]!=null&&hi[i]!=null) seg.push(i); else if(seg.length){segs.push(seg);seg=[];} } if(seg.length) segs.push(seg);
+  segs.forEach(s=>{ const d='M'+s.map(i=>X(i)+','+Y(hi[i])).join(' L')+' L'+s.slice().reverse().map(i=>X(i)+','+Y(lo[i])).join(' L')+'Z'; svg.appendChild(S('path',{d,fill:css('--ris-band')})); });
+  const line=(arr,col,w)=>{ let d='',pen=false; arr.forEach((v,i)=>{ if(v==null){pen=false;return;} d+=(pen?' L':' M')+X(i)+','+Y(v); pen=true; });
+    svg.appendChild(S('path',{d,fill:'none',stroke:col,'stroke-width':w,'stroke-linejoin':'round','stroke-linecap':'round'})); };
+  line(med,css('--ris'),2); line(inf,css('--ink'),2.5);
+  // hover
+  const ch=S('line',{y1:m.t,y2:m.t+ih,stroke:css('--axis'),opacity:0}); svg.appendChild(ch);
+  const d1=S('circle',{r:4,fill:css('--ris'),stroke:css('--plane'),'stroke-width':2,opacity:0}), d2=S('circle',{r:4,fill:css('--ink'),stroke:css('--plane'),'stroke-width':2,opacity:0}); svg.append(d1,d2);
+  const hit=S('rect',{x:m.l,y:m.t,width:iw,height:ih,fill:'transparent',tabindex:0}); svg.appendChild(hit);
+  const at=i=>{ ch.setAttribute('x1',X(i)); ch.setAttribute('x2',X(i)); ch.setAttribute('opacity',1);
+    [[d1,med[i]],[d2,inf[i]]].forEach(([c,v])=>{ if(v==null) c.setAttribute('opacity',0); else { c.setAttribute('cx',X(i)); c.setAttribute('cy',Y(v)); c.setAttribute('opacity',1);} });
+    const gap = (D.meta.gap_months||[]).includes(M[i]) || (D.meta.factiva_months||[]).includes(M[i]);
+    showTip(box, X(i)/W*box.clientWidth, Y(med[i]??inf[i]??0)/H*box.clientHeight, mlab(M[i])+(i>=li&&li>=0?' · live':'')+(gap?' · partial Reddit data':''), [
+      {n:'RIS median', v:f2(med[i]), c:css('--ris')},
+      {n:'RIS 10–90%', v: lo[i]==null?'–':f2(lo[i])+' to '+f2(hi[i]), c:css('--ris-band'), band:true},
+      {n:name+' (z)', v:f2(inf[i]), c:css('--ink'), thick:true},
+      {n:name+', y/y', v: pct[i]==null?'not yet released':pct[i].toFixed(2)+'%', c:css('--ink'), thick:true}]); };
+  const off=()=>{ ch.setAttribute('opacity',0); d1.setAttribute('opacity',0); d2.setAttribute('opacity',0); hideTip(); };
+  hit.addEventListener('pointermove',e=>{ const b=svg.getBoundingClientRect(); at(Math.max(0,Math.min(n-1,Math.round(((e.clientX-b.left)/b.width*W-m.l)/iw*(n-1))))); });
+  hit.addEventListener('pointerleave',off); hit.addEventListener('blur',off); hit.addEventListener('focus',()=>at(n-1));
+  box.appendChild(svg);
+}
+
+function render(){ draw('c-cpi','cpi','CPI'); draw('c-pce','pce','Core PCE'); }
+
+fetch(URL_,{cache:'no-store'}).then(r=>{ if(!r.ok) throw 0; return r.json(); }).then(d=>{
+  D=d; const mt=d.meta;
+  if(mt.mock) document.getElementById('mock').classList.remove('hidden');
+  document.getElementById('meta').textContent = `Updated ${new Date(mt.generated_at).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})} · Reddit data through ${mt.data_through} · CPI through ${mlab(mt.macro_last.CPIAUCSL)}, core PCE through ${mlab(mt.macro_last.PCEPILFE)}`;
+  const f=document.getElementById('foot');
+  [`RIS: each inflation-related submission and comment is labelled UP, DOWN or NEUTRAL by ${mt.model}; a thread takes the sign of the mean of its labels and is dated at the submission; threads are summed by day and subreddit. The 24 variants are the three subreddits times the moving-average windows of the paper (1 to 360 days), averaged by month; the chart shows their median and 10–90% range.`,
+   `Up to 2025M8 the series is the paper's; from ${mlab(mt.live_start)} it is built with the same prompts, filters and aggregation on newly collected posts (${mt.n_live_labelled.submission.toLocaleString('en-US')} submissions and ${mt.n_live_labelled.comment.toLocaleString('en-US')} comments so far). The latest month moves as comments arrive. Inflation data: FRED, latest vintage.`]
+   .concat(mt.factiva_days ? [`On ${mt.factiva_days} days without Reddit data (${mt.factiva_months.map(mlab).join(', ')}) the daily signal is taken from US newspaper headlines (Factiva), labelled with the same prompt.`] : [])
+   .concat(mt.gap_months && mt.gap_months.length ? [`Days with no data at all are left out of the moving averages (${mt.gap_months.map(mlab).join(', ')}).`] : [])
+   .forEach(t=>f.appendChild(E('p',{},t)));
+  render(); let rt; addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(render,150);});
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change',render);
+}).catch(()=>{ document.getElementById('meta').textContent='No data published yet.'; });
+})();
+</script>
+</body>
+</html>

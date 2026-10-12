@@ -1,0 +1,10 @@
+*.jwt
+.env
+.update.lock/
+logs/
+labels_mock/
+data/daily_signals_llama70b_live_mock.csv
+data/macro_fred_mock.csv
+docs/data/dashboard_mock.json
+__pycache__/
+.DS_Store

@@ -58,6 +58,7 @@ footer p{margin:0 0 6px}
   <p class="lede">Monthly Reddit Inflation Signal (RIS) from Llama-3.3-70B labels of US inflation discussions on r/Economics, r/economy and r/wallstreetbets, against CPI and core PCE inflation. The shaded period extends the paper's sample in real time.</p>
   <p class="cite">Del Monaco, A., Longo, L., Marcucci, J. and Tafani, I. <i>Reddit's Pulse on US Inflation: Forecasting with Large Language Models.</i></p>
   <div class="meta" id="meta">Loading…</div>
+  <div class="meta"><a id="dl" href="#" style="color:inherit">Download the monthly series (CSV)</a></div>
   <div class="note hidden" id="mock">Test build: the live months use a keyword stand-in, not Llama-70B.</div>
 
   <section>
@@ -153,6 +154,17 @@ fetch(URL_,{cache:'no-store'}).then(r=>{ if(!r.ok) throw 0; return r.json(); }).
   if(mt.mock) document.getElementById('mock').classList.remove('hidden');
   if(d.ris_ft) document.querySelectorAll('.ft-leg').forEach(e=>e.classList.remove('hidden'));
   document.getElementById('meta').textContent = `Updated ${new Date(mt.generated_at).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})} · Reddit data through ${mt.data_through} · CPI through ${mlab(mt.macro_last.CPIAUCSL)}, core PCE through ${mlab(mt.macro_last.PCEPILFE)}`;
+  document.getElementById('dl').addEventListener('click', e=>{
+    e.preventDefault();
+    const cols=[
+    ['ris_llama70b_median_z', D.ris.median], ['ris_llama70b_p10_z', D.ris.p10], ['ris_llama70b_p90_z', D.ris.p90],
+    ...(D.ris_ft ? [['ris_finetuned_median_z', D.ris_ft.median]] : []),
+    ['cpi_yoy_pct', D.cpi.pct], ['cpi_z', D.cpi.z], ['core_pce_yoy_pct', D.pce.pct], ['core_pce_z', D.pce.z]];
+    const lines=[['month', ...cols.map(c=>c[0])].join(',')].concat(D.months.map((m,i)=>[m, ...cols.map(c=>c[1]&&c[1][i]!=null?c[1][i]:'')].join(',')));
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([lines.join('\n')+'\n'],{type:'text/csv'}));
+    a.download='reddit_inflation_signal_us.csv'; document.body.appendChild(a); a.click(); a.remove();
+  });
   const f=document.getElementById('foot');
   [`RIS: each inflation-related submission and comment is labelled UP, DOWN or NEUTRAL by ${mt.model}; a thread takes the sign of the mean of its labels and is dated at the submission; threads are summed by day and subreddit. The 24 variants are the three subreddits times the moving-average windows of the paper (1 to 360 days), averaged by month; the chart shows their median and 10–90% range.`,
    `Up to 2025M8 the series is the paper's; from ${mlab(mt.live_start)} it is built with the same prompts, filters and aggregation on newly collected posts (${mt.n_live_labelled.submission.toLocaleString('en-US')} submissions and ${mt.n_live_labelled.comment.toLocaleString('en-US')} comments so far). The latest month moves as comments arrive. Inflation data: FRED, latest vintage.`]

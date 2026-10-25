@@ -1,5 +1,5 @@
 #!/bin/bash
-# Called by launchd every hour: label new posts, rebuild the JSON, push to GitHub Pages.
+# Called by launchd once a day: label new posts (Llama-70B, then the fine-tuned models), rebuild the JSON, push to GitHub Pages.
 REPO="$(cd "$(dirname "$0")" && pwd)"
 PY="${RIS_PYTHON:-/opt/anaconda3/bin/python}"
 LOCK="$REPO/.update.lock"
@@ -9,4 +9,7 @@ trap 'rmdir "$LOCK"' EXIT
 cd "$REPO"
 git pull --rebase --quiet >> "$REPO/logs/update.log" 2>&1
 [ -f "$REPO/.env" ] && set -a && . "$REPO/.env" && set +a
+echo "=== $(date) ===" >> "$REPO/logs/update.log"
+/usr/bin/caffeinate -i "$PY" update_dashboard.py >> "$REPO/logs/update.log" 2>&1     # Llama labels + texts for the fine-tuned models
+/usr/bin/caffeinate -i "$PY" label_finetuned.py >> "$REPO/logs/update.log" 2>&1      # fine-tuned labels of the new posts
 PUSH=1 /usr/bin/caffeinate -i "$PY" update_dashboard.py >> "$REPO/logs/update.log" 2>&1

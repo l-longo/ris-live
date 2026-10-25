@@ -51,11 +51,11 @@ os.environ.setdefault('TOKENIZERS_PARALLELISM', 'false')
 
 import torch
 from huggingface_hub import hf_hub_download
-from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer
+from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer, PreTrainedTokenizerFast
 from peft import PeftModel
 
-DEVICE = 'mps' if torch.backends.mps.is_available() else 'cpu'
-DTYPE = torch.bfloat16
+DEVICE = os.environ.get('RIS_DEVICE', 'cpu')                                # fixed Mac: MPS on its AMD GPU gives wrong outputs (all DOWN); 'mps' to force it
+DTYPE = torch.bfloat16 if DEVICE != 'cpu' else torch.float32             # bf16 on this Xeon CPU is emulated and slow
 try:
     torch.zeros(2, dtype=DTYPE, device=DEVICE) @ torch.zeros(2, dtype=DTYPE, device=DEVICE)
 except Exception:
@@ -102,7 +102,12 @@ for name, repo, kind in MODELS:
         continue
 
     # -- load ---------------------------------------------------------------
-    tok = AutoTokenizer.from_pretrained(repo, use_fast=True)
+    try:                                                                     # tokenizer files saved by transformers 5: extra_special_tokens as a list (4.x wants a dict;
+        tok = AutoTokenizer.from_pretrained(repo, use_fast=True, extra_special_tokens={})   # the tokens are already in tokenizer.json)
+    except ValueError as e:                                                  # class 'TokenizersBackend' (5.x name): same tokenizer.json, generic fast class
+        if 'TokenizersBackend' not in str(e):
+            raise
+        tok = PreTrainedTokenizerFast.from_pretrained(repo, extra_special_tokens={})
     if kind == 'decoder':
         tok.pad_token = tok.pad_token or tok.eos_token
         tok.padding_side = 'left'
@@ -120,7 +125,16 @@ for name, repo, kind in MODELS:
     else:
         model = AutoModelForSequenceClassification.from_pretrained(repo, dtype=torch.float32)
         max_len = 512
-    model.to(DEVICE).eval()
+    dev = DEVICE
+    try:
+        model.to(dev).eval()
+    except RuntimeError as e:                                                # GPU memory too small for this model (AMD, ~5 GB): use the CPU
+        if dev != 'mps' or 'out of memory' not in str(e):
+            raise
+        model.to('cpu').eval()
+        torch.mps.empty_cache()
+        dev = 'cpu'
+        print(f'  MPS out of memory - {name} runs on the CPU', flush=True)
     id2label = {int(k): v.lower() for k, v in model.config.id2label.items()}
     print(f'  loaded {repo} ({"base " + base_id if kind == "decoder" else "full checkpoint"}), id2label {id2label}, {time.time() - t0:.0f}s')
 
@@ -131,7 +145,7 @@ for name, repo, kind in MODELS:
         chunk = order.iloc[i:i + BATCH]
         enc = tok(chunk['text'].tolist(), return_tensors='pt', padding=True, truncation=True, max_length=max_len)
         with torch.inference_mode():
-            logits = model(input_ids=enc['input_ids'].to(DEVICE), attention_mask=enc['attention_mask'].to(DEVICE)).logits
+            logits = model(input_ids=enc['input_ids'].to(dev), attention_mask=enc['attention_mask'].to(dev)).logits
         pred = torch.argmax(logits.float(), dim=1).cpu().numpy()
         for (rid, rkind), p in zip(chunk[['id', 'kind']].itertuples(index=False), pred):
             rows.append({'id': rid, 'kind': rkind, 'trend': ENCODING.get(id2label.get(int(p), ''), np.nan)})
